@@ -26,6 +26,17 @@ int Account::get_balance()
     return this->balance;
 }
 
+std::map<int, std::string> Account::get_ledger()
+{
+    return this->ledger;
+}
+
+void Account::load_history(string record)
+{
+    int next_id = this->ledger.size() + 1;
+    this->ledger[next_id] = record;
+}
+
 string Account::get_name()
 {
     return this->acc_holder;

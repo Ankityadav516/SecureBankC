@@ -15,6 +15,108 @@ string BankManager::get_current_time()
     return string(buffer);
 }
 
+void BankManager::run_admin_session()
+{
+    cout << "\n=========================================\n";
+    cout << " >>> ADMIN OVERRIDE ACCEPTED. Welcome. <<<\n";
+    cout << "=========================================\n";
+
+    int choice = 0;
+    while (choice != 4)
+    {
+        cout << "\n1: Total Vault Liquidity | 2: View User Roster | 3: Inspect Ledger | 4: Shutdown Server\n";
+        cin >> choice;
+
+        switch (choice)
+        {
+        case 1:
+        {
+            long long total_liquidity = 0;
+            int total_accounts = 0;
+
+            cout << "\n>>> CALCULATING GLOBAL LIQUIDITY...\n";
+
+            for (auto &it : account_vault)
+            {
+                total_liquidity += it.second.get_balance();
+                total_accounts++;
+            }
+
+            cout << "-----------------------------------------\n";
+            cout << " TOTAL ACCOUNTS IN VAULT : " << total_accounts << "\n";
+            cout << " TOTAL CASH LIQUIDITY    : $" << total_liquidity << "\n";
+            cout << "-----------------------------------------\n";
+            break;
+        }
+        case 2:
+        {
+            cout << "\n>>> VAULT ROSTER: ACTIVE ACCOUNTS <<<\n";
+            cout << "---------------------------------------------------\n";
+            cout << " ACC NUM    | ACCOUNT HOLDER NAME  | BALANCE \n";
+            cout << "---------------------------------------------------\n";
+
+            int user_count = 0;
+
+            for (auto &it : account_vault)
+            {
+                string acc_num = it.first;
+                string name = it.second.get_name();
+                int current_balance = it.second.get_balance(); 
+                
+                cout << " " << acc_num << "     | " << name << " | $" << current_balance << "\n";
+                user_count++;
+            }
+
+            if (user_count == 0)
+            {
+                cout << " [!] Vault is entirely empty.\n";
+            }
+            cout << "---------------------------------------------------\n";
+            break;
+        }
+        case 3:
+        {
+            string target_acc;
+            cout << "\n>>> ENTER ACCOUNT NUMBER TO INSPECT: ";
+            cin >> target_acc;
+
+            if (account_vault.count(target_acc) > 0)
+            {
+                SavingsAccount &target = account_vault.at(target_acc);
+
+                string date1, date2;
+                cout << "Enter start date (YYYY-MM-DD): ";
+                cin >> date1;
+                cout << "Enter end date (YYYY-MM-DD): ";
+                cin >> date2;
+
+                cout << "\n>>> PULLING SECURE LEDGER FOR ACCOUNT " << target_acc << " <<<\n";
+
+                target.print_statement(date1, date2);
+            }
+            else
+            {
+                cout << ">>> ERROR: Account '" << target_acc << "' not found in vault.\n";
+            }
+            break;
+        }
+        case 4:
+        {
+            cout << ">>> INITIATING SECURE SERVER SHUTDOWN...\n";
+            shutdown_server();
+            exit(0);
+            break;
+        }
+        case 5:
+        {
+            break;
+        }
+        default:
+            cout << "Invalid admin command.\n";
+        }
+    }
+}
+
 void BankManager::run_bank_session(SavingsAccount &active_account, User &active_user)
 {
     int choice = 1;
@@ -172,8 +274,7 @@ void BankManager::boot_up_scanner()
 
             while (getline(history_ss, single, '|'))
             {
-                int next_id = temp_acc.ledger.size() + 1;
-                temp_acc.ledger[next_id] = single;
+                temp_acc.load_history(single);
             }
 
             account_vault.insert({num, temp_acc});
@@ -199,7 +300,7 @@ void BankManager::shutdown_server()
                    << user_vault.at(acc_num).get_pin() << ","
                    << temp.get_balance() << ",";
 
-            for (auto &iter : temp.ledger)
+            for (auto &iter : temp.get_ledger())
             {
                 myfile << iter.second << "|";
             }
@@ -221,12 +322,28 @@ void BankManager::show_main_menu()
         cout << "\n=========================================\n";
         cout << "   WELCOME TO THE SECURE BANK PORTAL   \n";
         cout << "=========================================\n";
-        cout << "Enter '1' to Login or '0' to Create Account (or '9' to shutdown): ";
+        cout << "Enter '1' to Login or '0' to Create Account: ";
 
-        int option;
+        string option;
         cin >> option;
 
-        if (option == 1)
+        if (option == "ADMIN")
+        {
+            string password;
+            cout << "\n>>> ENTER MASTER PASSWORD: ";
+            cin >> password;
+
+            if (password == "0705162513240929")
+            {
+                run_admin_session();
+            }
+            else
+            {
+                cout << ">>> ACCESS DENIED. INTRUDER LOGGED.\n";
+            }
+            continue;
+        }
+        else if (option == "1")
         {
             string account_number;
             cout << "Enter your account number :\n";
@@ -244,7 +361,7 @@ void BankManager::show_main_menu()
                 cout << "\n>>> ERROR: Account Number '" << account_number << "' does not exist. Access Denied.\n";
             }
         }
-        else if (option == 0)
+        else if (option == "0")
         {
             string loaded_name;
             int age, pin, loaded_balance;
@@ -281,10 +398,9 @@ void BankManager::show_main_menu()
 
             run_bank_session(live_account, live_user);
         }
-        else if (option == 9)
+        else
         {
-            shutdown_server();
-            break;
+            cout << ">>> ERROR: Invalid input. Please type '1' or '0'.\n";
         }
     }
 }

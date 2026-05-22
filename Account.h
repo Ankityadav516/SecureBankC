@@ -9,16 +9,17 @@ private:
     int balance;
     std::string acc_number;
     std::string acc_holder;
+    std::map<int, std::string> ledger;
 
 public:
     Account(std::string name, int amount = 0);
     Account(std::string name, std::string existing_acc_num, int amount);
 
-    std::map<int, std::string> ledger;
-
     // Static function
     static void sync_generator(int highest_found);
 
+    std::map<int, std::string> get_ledger(); 
+    void load_history(std::string record);
     int get_balance();
     std::string get_name();
     std::string get_acc_number();
