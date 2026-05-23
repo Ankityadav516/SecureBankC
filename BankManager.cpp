@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <ctime>
+#include "BankCrypto.h"
 
 using namespace std;
 
@@ -61,8 +62,8 @@ void BankManager::run_admin_session()
             {
                 string acc_num = it.first;
                 string name = it.second.get_name();
-                int current_balance = it.second.get_balance(); 
-                
+                int current_balance = it.second.get_balance();
+
                 cout << " " << acc_num << "     | " << name << " | $" << current_balance << "\n";
                 user_count++;
             }
@@ -121,7 +122,7 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
 {
     int choice = 1;
     int amount = 0;
-    int pin = 0;
+    string pin;
 
     cout << "\n>>> Welcome, " << active_account.get_name() << " <<<\n";
 
@@ -153,7 +154,29 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
         {
             cout << "Enter your current pin :\n";
             cin >> pin;
-            active_user.change_pin(pin);
+            string original_hash = active_user.get_hash();
+            string salt = active_user.get_salt();
+            string hash_pass = BankCrypto::hash_password(pin, salt);
+            if (hash_pass == original_hash)
+            {
+                string new_salt = BankCrypto::generate_salt();
+                active_user.set_salt(new_salt);
+                string new_pin;
+                cout << "Enter the new pin :\n";
+                cin >> new_pin;
+                while (new_pin.length() != 4)
+                {
+                    cout << "PLease enter a valid pin:\n";
+                    cin >> new_pin;
+                }
+                string new_hash = BankCrypto::hash_password(new_pin, new_salt);
+                active_user.set_hash(new_hash);
+                cout << "Password changed successfully\n";
+            }
+            else
+            {
+                cout << "Entered pin is wrong:\n";
+            }
             break;
         }
         case 5:
@@ -247,12 +270,13 @@ void BankManager::boot_up_scanner()
             if (line.empty())
                 continue;
             stringstream ss(line);
-            string name, num, balance_str, age_str, pin_str, history;
+            string name, num, balance_str, age_str, hash_str, salt_str, history;
 
             getline(ss, num, ',');
             getline(ss, name, ',');
             getline(ss, age_str, ',');
-            getline(ss, pin_str, ',');
+            getline(ss, hash_str, ',');
+            getline(ss, salt_str, ',');
             getline(ss, balance_str, ',');
             getline(ss, history);
 
@@ -262,7 +286,6 @@ void BankManager::boot_up_scanner()
             int temp_num = stoi(num);
             int temp_bal = stoi(balance_str);
             int temp_age = stoi(age_str);
-            int temp_pin = stoi(pin_str);
 
             if (temp_num > highest_acc_found)
             {
@@ -270,7 +293,7 @@ void BankManager::boot_up_scanner()
             }
 
             SavingsAccount temp_acc(name, num, 5, temp_bal);
-            User temp_user(name, temp_age, temp_pin);
+            User temp_user(name, temp_age, hash_str, salt_str);
 
             while (getline(history_ss, single, '|'))
             {
@@ -297,7 +320,8 @@ void BankManager::shutdown_server()
             myfile << temp.get_acc_number() << ","
                    << temp.get_name() << ","
                    << user_vault.at(acc_num).get_age() << ","
-                   << user_vault.at(acc_num).get_pin() << ","
+                   << user_vault.at(acc_num).get_hash() << ","
+                   << user_vault.at(acc_num).get_salt() << ","
                    << temp.get_balance() << ",";
 
             for (auto &iter : temp.get_ledger())
@@ -333,7 +357,17 @@ void BankManager::show_main_menu()
             cout << "\n>>> ENTER MASTER PASSWORD: ";
             cin >> password;
 
-            if (password == "0705162513240929")
+            // We use a hardcoded salt specifically for the Admin
+            string master_salt = "MASTER_SALT_123";
+
+            // Run the password through your 10,000x crypto engine
+            string attempt_hash = BankCrypto::hash_password(password, master_salt);
+
+            // TEMPORARY LINE: Uncomment this so the console prints the hash for you!
+            // cout << ">>> [DEBUG] EXACT HASH: " << attempt_hash << "\n";
+
+            // Replace "PASTE_HASH_HERE" with the string from the terminal
+            if (attempt_hash == "c112ddb2414147ae5e6cdebc01f91a007f2b1ead887aab8c7694abf2aa4a9f89")
             {
                 run_admin_session();
             }
@@ -351,10 +385,30 @@ void BankManager::show_main_menu()
 
             if (account_vault.count(account_number) > 0)
             {
-                cout << ">>> Account found instantly in RAM!\n";
-                SavingsAccount &session_account = account_vault.at(account_number);
-                User &session_user = user_vault.at(account_number);
-                run_bank_session(session_account, session_user);
+                int i = 3;
+                while (i)
+                {
+                    string pin;
+                    cout << "Enter your pin :\n";
+                    cin >> pin;
+                    string salt = user_vault.at(account_number).get_salt();
+                    string original_hash = user_vault.at(account_number).get_hash();
+                    string hash_pass = BankCrypto::hash_password(pin, salt);
+                    if (hash_pass == original_hash)
+                    {
+                        cout << ">>> Account found instantly in RAM!\n";
+                        SavingsAccount &session_account = account_vault.at(account_number);
+                        User &session_user = user_vault.at(account_number);
+                        run_bank_session(session_account, session_user);
+                        break;
+                    }
+                    else
+                    {
+                        cout << "Invalid pin\n";
+                        cout << i - 1 << " turns left to login\n";
+                    }
+                    i--;
+                }
             }
             else
             {
@@ -364,8 +418,8 @@ void BankManager::show_main_menu()
         else if (option == "0")
         {
             string loaded_name;
-            int age, pin, loaded_balance;
-
+            int age, loaded_balance;
+            string pin;
             cout << "Enter your name :\n";
             cin >> loaded_name;
             cout << "Enter your age :\n";
@@ -375,14 +429,15 @@ void BankManager::show_main_menu()
             cout << "Enter the pin you want to set for the account (4 digits):\n";
             cin >> pin;
 
-            while (pin < 1000 || pin > 9999)
+            while (pin.length() != 4)
             {
                 cout << ">>> ERROR: PIN must be exactly 4 digits. Try again:\n";
                 cin >> pin;
             }
-
+            string salt = BankCrypto::generate_salt();
+            string hash_pass = BankCrypto::hash_password(pin, salt);
             SavingsAccount temp_account(loaded_name, 5, 0);
-            User temp_user(loaded_name, age, pin);
+            User temp_user(loaded_name, age, hash_pass, salt);
 
             string new_id = temp_account.get_acc_number();
             account_vault.insert({new_id, temp_account});
