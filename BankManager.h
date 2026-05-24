@@ -10,7 +10,7 @@ private:
     std::map<std::string, SavingsAccount> account_vault;
     std::map<std::string, User> user_vault;
     void run_admin_session();
-
+    int get_valid_int(std::string prompt);
     std::string get_current_time();
     void run_bank_session(SavingsAccount &active_account, User &active_user);
 

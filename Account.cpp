@@ -107,6 +107,12 @@ void Account::withdraw(int amount, bool silent)
 {
     if (amount > 0 && amount <= this->balance)
     {
+
+        if (amount > 10000 && !silent)
+        {
+            cout << ">>> ERROR: Transaction denied. Maximum physical withdrawal is $10,000.\n";
+            return; 
+        }
         this->balance -= amount;
 
         time_t raw_time = time(0);

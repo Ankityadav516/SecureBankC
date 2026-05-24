@@ -3,9 +3,31 @@
 #include <fstream>
 #include <sstream>
 #include <ctime>
+#include <limits>
 #include "BankCrypto.h"
 
 using namespace std;
+
+int BankManager::get_valid_int(string prompt)
+{
+    int input;
+    while (true)
+    {
+        cout << prompt;
+        cin >> input;
+
+        if (cin.fail())
+        {
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n');
+            cout << ">>> ERROR: Invalid input. Please enter a valid number.\n";
+        }
+        else
+        {
+            return input;
+        }
+    }
+}
 
 string BankManager::get_current_time()
 {
@@ -26,7 +48,7 @@ void BankManager::run_admin_session()
     while (choice != 4)
     {
         cout << "\n1: Total Vault Liquidity | 2: View User Roster | 3: Inspect Ledger | 4: Shutdown Server\n";
-        cin >> choice;
+        choice = get_valid_int("Enter your choice:\n");
 
         switch (choice)
         {
@@ -126,10 +148,10 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
 
     cout << "\n>>> Welcome, " << active_account.get_name() << " <<<\n";
 
-    while (choice != 8)
+    while (choice != 7)
     {
-        cout << "\n1:Display Account | 2:Deposit | 3:Withdraw | 4:Change pin | 5:Apply interest | 6:Transfer Money | 7:Transaction History | 8:Exit\n";
-        cin >> choice;
+        cout << "\n1:Display Account | 2:Deposit | 3:Withdraw | 4:Change pin | 5:Transfer Money | 6:Transaction History | 7:Exit\n";
+        choice = get_valid_int("Enter the choice:\n");
 
         switch (choice)
         {
@@ -138,15 +160,13 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
             break;
         case 2:
         {
-            cout << "Enter deposit amount: ";
-            cin >> amount;
+            amount = get_valid_int("Enter deposit amount:\n");
             active_account.deposit(amount);
             break;
         }
         case 3:
         {
-            cout << "Enter the amount to be withdrawn :\n";
-            cin >> amount;
+            amount = get_valid_int("Enter the amount to be withdrawn :\n");
             active_account.withdraw(amount);
             break;
         }
@@ -181,20 +201,14 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
         }
         case 5:
         {
-            active_account.apply_interest();
-            break;
-        }
-        case 6:
-        {
             string target_acc_num;
             cout << "Enter the account number you want to transfer money to :\n";
             cin >> target_acc_num;
             if (account_vault.count(target_acc_num))
             {
                 SavingsAccount &target = account_vault.at(target_acc_num);
-                cout << "Enter the amount you want to tranfer: \n";
                 int amount;
-                cin >> amount;
+                amount = get_valid_int("Enter the amount you want to tranfer: \n");
                 if (active_account.get_balance() < amount)
                     cout << "Not enough balance !\n";
                 else
@@ -212,7 +226,7 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
             }
             break;
         }
-        case 7:
+        case 6:
         {
             string date1;
             string date2;
@@ -243,7 +257,7 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
             }
             active_account.print_statement(date1, date2);
         }
-        case 8:
+        case 7:
         {
             cout << "Logging out...\n";
             break;
@@ -422,10 +436,8 @@ void BankManager::show_main_menu()
             string pin;
             cout << "Enter your name :\n";
             cin >> loaded_name;
-            cout << "Enter your age :\n";
-            cin >> age;
-            cout << "Enter your amount you wanna deposit in account :\n";
-            cin >> loaded_balance;
+            age = get_valid_int("Enter your age :\n");
+            loaded_balance = get_valid_int("Enter your amount you wanna deposit in account :\n");
             cout << "Enter the pin you want to set for the account (4 digits):\n";
             cin >> pin;
 
