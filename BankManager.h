@@ -14,6 +14,7 @@ private:
     int get_valid_int(std::string prompt);
     std::string get_current_time();
     sqlite3* db;
+    void update_database_balance(Account* acc);
     void run_bank_session(Account *active_account, User &active_user);
 
 public:

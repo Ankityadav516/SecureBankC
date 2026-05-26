@@ -29,6 +29,16 @@ int BankManager::get_valid_int(string prompt)
     }
 }
 
+void BankManager::update_database_balance(Account *acc)
+{
+    // Construct the SQL UPDATE string
+    string update_sql = "UPDATE Accounts SET Balance = " + to_string(acc->get_balance()) +
+                        " WHERE Account_Number = '" + acc->get_acc_number() + "';";
+
+    // Fire it to the database silently
+    sqlite3_exec(db, update_sql.c_str(), NULL, 0, nullptr);
+}
+
 string BankManager::get_current_time()
 {
     time_t raw_time = time(0);
@@ -162,12 +172,14 @@ void BankManager::run_bank_session(Account *active_account, User &active_user)
         {
             amount = get_valid_int("Enter deposit amount:\n");
             active_account->deposit(amount);
+            update_database_balance(active_account);
             break;
         }
         case 3:
         {
             amount = get_valid_int("Enter the amount to be withdrawn :\n");
             active_account->withdraw(amount);
+            update_database_balance(active_account);
             break;
         }
         case 4:
@@ -215,7 +227,8 @@ void BankManager::run_bank_session(Account *active_account, User &active_user)
                 {
                     active_account->withdraw(amount, true);
                     target->deposit(amount, true);
-
+                    update_database_balance(active_account);
+                    update_database_balance(target);
                     cout << ">>> Transfer of $" << amount << " to Account " << target_acc_num << " was successful.\n";
                     cout << ">>> Your current balance is : $" << active_account->get_balance() << "\n";
                 }
@@ -274,88 +287,92 @@ void BankManager::run_bank_session(Account *active_account, User &active_user)
 void BankManager::boot_up_scanner()
 {
     int highest_acc_found = 100000;
-    ifstream file("bank_database.csv");
 
-    if (file.is_open())
+    // 1. Open Database
+    int connection_status = sqlite3_open("secure_vault.db", &db);
+    if (connection_status != SQLITE_OK)
     {
-        string line;
-        while (getline(file, line))
+        std::cerr << "CRITICAL ERROR: Cannot open database: " << sqlite3_errmsg(db) << std::endl;
+        return;
+    }
+
+    std::string sql_schema =
+        "CREATE TABLE IF NOT EXISTS Accounts ("
+        "Account_Number TEXT PRIMARY KEY, "
+        "Name TEXT NOT NULL, "
+        "Age INTEGER, "
+        "Hash TEXT, "
+        "Salt TEXT, "
+        "Balance INTEGER NOT NULL, "
+        "Account_Type TEXT);";
+
+    char *error_message = nullptr;
+    sqlite3_exec(db, sql_schema.c_str(), NULL, 0, &error_message);
+
+    // 3. The Boot-Up Query (Disk to RAM)
+    std::string select_query = "SELECT * FROM Accounts;";
+    sqlite3_stmt *stmt; // A pointer to hold our compiled SQL query
+
+    // Compile the query
+    if (sqlite3_prepare_v2(db, select_query.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+    {
+        // Loop through the database, row by row
+        while (sqlite3_step(stmt) == SQLITE_ROW)
         {
-            if (line.empty())
-                continue;
-            stringstream ss(line);
-            string name, num, balance_str, age_str, hash_str, salt_str, history;
+            // Extract data from the database columns
+            string num = (const char *)sqlite3_column_text(stmt, 0);
+            string name = (const char *)sqlite3_column_text(stmt, 1);
+            int age = sqlite3_column_int(stmt, 2);
+            string hash_str = (const char *)sqlite3_column_text(stmt, 3);
+            string salt_str = (const char *)sqlite3_column_text(stmt, 4);
+            int temp_bal = sqlite3_column_int(stmt, 5);
 
-            getline(ss, num, ',');
-            getline(ss, name, ',');
-            getline(ss, age_str, ',');
-            getline(ss, hash_str, ',');
-            getline(ss, salt_str, ',');
-            getline(ss, balance_str, ',');
-            getline(ss, history);
-
-            stringstream history_ss(history);
-            string single;
-
+            // Track the highest account number for your generator
             int temp_num = stoi(num);
-            int temp_bal = stoi(balance_str);
-            int temp_age = stoi(age_str);
-
             if (temp_num > highest_acc_found)
             {
                 highest_acc_found = temp_num;
             }
 
+            // Rebuild the C++ objects and push them into the Vaults
             Account *temp_acc = new SavingsAccount(name, num, 5, temp_bal);
-            User temp_user(name, temp_age, hash_str, salt_str);
-
-            while (getline(history_ss, single, '|'))
-            {
-                temp_acc->load_history(single);
-            }
+            User temp_user(name, age, hash_str, salt_str);
 
             account_vault.insert({num, temp_acc});
             user_vault.insert({num, temp_user});
         }
-        file.close();
     }
+
+    // Clean up the memory used by the query
+    sqlite3_finalize(stmt);
+
+    // Synchronize your generator so it doesn't assign duplicate numbers!
     Account::sync_generator(highest_acc_found);
+
+    std::cout << "[SYSTEM] Database Booted. RAM Vault Loaded. Sync Level: " << highest_acc_found << std::endl;
 }
 
 void BankManager::shutdown_server()
 {
-    ofstream myfile("bank_database.csv");
-    if (myfile.is_open())
-    {
-        for (auto it : account_vault)
-        {
-            Account *temp = it.second;
-            string acc_num = it.first;
-            myfile << temp->get_acc_number() << ","
-                   << temp->get_name() << ","
-                   << user_vault.at(acc_num).get_age() << ","
-                   << user_vault.at(acc_num).get_hash() << ","
-                   << user_vault.at(acc_num).get_salt() << ","
-                   << temp->get_balance() << ",";
+    cout << ">>> SECURING VAULT AND INITIATING SHUTDOWN...\n";
 
-            for (auto &iter : temp->get_ledger())
-            {
-                myfile << iter.second << "|";
-            }
-            myfile << "\n";
-        }
-    }
-    else
-    {
-        cout << "Error in opening database file\n";
-    }
+    // 1. Free the Heap Memory (Prevent RAM Leaks)
     for (auto &it : account_vault)
     {
-        delete it.second;
+        delete it.second; 
     }
+    
+    // 2. Clear the RAM maps
     account_vault.clear();
-    myfile.close();
-    cout << "Closing the server.....\n";
+    user_vault.clear();
+
+    // 3. Lock the Vault (Close the SQLite connection)
+    if (db) {
+        sqlite3_close(db);
+        cout << ">>> Database connection closed safely.\n";
+    }
+
+    cout << ">>> Server Offline.\n";
 }
 
 void BankManager::show_main_menu()
@@ -476,7 +493,32 @@ void BankManager::show_main_menu()
             string new_id = temp_account->get_acc_number();
             account_vault.insert({new_id, temp_account});
             user_vault.insert({new_id, temp_user});
+            // --- DATABASE WRITE-THROUGH: SAVE NEW USER TO DISK ---
 
+            // 1. Convert the integer account type to a string
+            string acc_type_str = (acc_type == 1) ? "Savings" : "Checking";
+
+            // 2. Construct the SQL string by stitching C++ variables into it
+            string insert_sql =
+                "INSERT INTO Accounts (Account_Number, Name, Age, Hash, Salt, Balance, Account_Type) "
+                "VALUES ('" +
+                new_id + "', '" + loaded_name + "', " + to_string(age) + ", '" +
+                hash_pass + "', '" + salt + "', " + to_string(loaded_balance) + ", '" + acc_type_str + "');";
+
+            // 3. Fire the command directly to the hard drive
+            char *insert_error = nullptr;
+            int insert_status = sqlite3_exec(db, insert_sql.c_str(), NULL, 0, &insert_error);
+
+            if (insert_status != SQLITE_OK)
+            {
+                cerr << ">>> CRITICAL SQL ERROR: Could not save to disk: " << insert_error << endl;
+                sqlite3_free(insert_error);
+            }
+            else
+            {
+                cout << ">>> Account physically secured in SQLite vault.\n";
+            }
+            // -----------------------------------------------------
             Account *live_account = account_vault.at(new_id);
             User &live_user = user_vault.at(new_id);
 
