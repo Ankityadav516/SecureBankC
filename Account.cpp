@@ -72,6 +72,12 @@ void Account::deposit(int amount, bool silent)
     }
 }
 
+CheckingAccount::CheckingAccount(std::string name, int amount)
+    : Account(name, amount) {}
+
+CheckingAccount::CheckingAccount(std::string name, std::string existing_acc_num, int amount)
+    : Account(name, existing_acc_num, amount) {}
+
 void Account::print_statement(string start_date, string end_date)
 {
     for (auto it : this->ledger)
@@ -103,7 +109,7 @@ void Account::print_statement(string start_date, string end_date)
     }
     cout << "-------------------------------------------------\n";
 }
-void Account::withdraw(int amount, bool silent)
+bool SavingsAccount::withdraw(int amount, bool silent)
 {
     if (amount > 0 && amount <= this->balance)
     {
@@ -111,7 +117,7 @@ void Account::withdraw(int amount, bool silent)
         if (amount > 10000 && !silent)
         {
             cout << ">>> ERROR: Transaction denied. Maximum physical withdrawal is $10,000.\n";
-            return; 
+            return false;
         }
         this->balance -= amount;
 
@@ -127,11 +133,48 @@ void Account::withdraw(int amount, bool silent)
         this->ledger[key] = value;
         if (!silent)
             cout << "Amount withdrawn successfully. Your current balance is : " << this->balance << "\n";
+        return true;
     }
     else
     {
         cout << "Invalid amount or insufficient funds.\n";
+        return false;
     }
+}
+
+bool CheckingAccount::withdraw(int amount, bool silent)
+{
+    if (balance - amount < -500)
+    {
+        if (!silent)
+            std::cout << "Error: Transaction declined. Exceeds -$500 overdraft limit.\n";
+        return false;
+    }
+    balance -= amount;
+
+    time_t raw_time = time(0);
+    tm *local_time = localtime(&raw_time);
+    char buffer[80];
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d %I:%M%p", local_time);
+    string current_time = string(buffer);
+
+    string value = current_time + "@-" + to_string(amount);
+
+    ledger[ledger.size() + 1] = current_time + "@-" + std::to_string(amount);
+
+    if (!silent)
+        std::cout << "Withdrawn: $" << amount << " | New Balance: $" << balance << "\n";
+
+    if (balance < 0)
+    {
+        balance -= 35;
+
+        ledger[ledger.size() + 1] = current_time + "@-35";
+
+        if (!silent)
+            std::cout << "WARNING: Account overdrawn! $35 penalty fee applied. New Balance: $" << balance << "\n";
+    }
+    return true;
 }
 
 void Account::displayAccount()

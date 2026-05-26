@@ -1,6 +1,7 @@
 #include "BankCrypto.h"
 #include "picosha2.h"
 #include <random>
+#include <chrono>
 
 using namespace std;
 
@@ -8,8 +9,8 @@ string BankCrypto::generate_salt()
 {
     const string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
-    random_device rd;
-    mt19937 generator(rd());
+    unsigned seed = chrono::steady_clock::now().time_since_epoch().count();
+    mt19937 generator(seed);
 
     uniform_int_distribution<int> distribution(0, charset.length() - 1);
 

@@ -61,7 +61,7 @@ void BankManager::run_admin_session()
 
             for (auto &it : account_vault)
             {
-                total_liquidity += it.second.get_balance();
+                total_liquidity += it.second->get_balance();
                 total_accounts++;
             }
 
@@ -83,8 +83,8 @@ void BankManager::run_admin_session()
             for (auto &it : account_vault)
             {
                 string acc_num = it.first;
-                string name = it.second.get_name();
-                int current_balance = it.second.get_balance();
+                string name = it.second->get_name();
+                int current_balance = it.second->get_balance();
 
                 cout << " " << acc_num << "     | " << name << " | $" << current_balance << "\n";
                 user_count++;
@@ -105,7 +105,7 @@ void BankManager::run_admin_session()
 
             if (account_vault.count(target_acc) > 0)
             {
-                SavingsAccount &target = account_vault.at(target_acc);
+                Account *target = account_vault.at(target_acc);
 
                 string date1, date2;
                 cout << "Enter start date (YYYY-MM-DD): ";
@@ -115,7 +115,7 @@ void BankManager::run_admin_session()
 
                 cout << "\n>>> PULLING SECURE LEDGER FOR ACCOUNT " << target_acc << " <<<\n";
 
-                target.print_statement(date1, date2);
+                target->print_statement(date1, date2);
             }
             else
             {
@@ -140,13 +140,13 @@ void BankManager::run_admin_session()
     }
 }
 
-void BankManager::run_bank_session(SavingsAccount &active_account, User &active_user)
+void BankManager::run_bank_session(Account *active_account, User &active_user)
 {
     int choice = 1;
     int amount = 0;
     string pin;
 
-    cout << "\n>>> Welcome, " << active_account.get_name() << " <<<\n";
+    cout << "\n>>> Welcome, " << active_account->get_name() << " <<<\n";
 
     while (choice != 7)
     {
@@ -156,18 +156,18 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
         switch (choice)
         {
         case 1:
-            active_account.displayAccount();
+            active_account->displayAccount();
             break;
         case 2:
         {
             amount = get_valid_int("Enter deposit amount:\n");
-            active_account.deposit(amount);
+            active_account->deposit(amount);
             break;
         }
         case 3:
         {
             amount = get_valid_int("Enter the amount to be withdrawn :\n");
-            active_account.withdraw(amount);
+            active_account->withdraw(amount);
             break;
         }
         case 4:
@@ -206,18 +206,18 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
             cin >> target_acc_num;
             if (account_vault.count(target_acc_num))
             {
-                SavingsAccount &target = account_vault.at(target_acc_num);
+                Account *target = account_vault.at(target_acc_num);
                 int amount;
                 amount = get_valid_int("Enter the amount you want to tranfer: \n");
-                if (active_account.get_balance() < amount)
+                if (active_account->get_balance() < amount)
                     cout << "Not enough balance !\n";
                 else
                 {
-                    active_account.withdraw(amount, true);
-                    target.deposit(amount, true);
+                    active_account->withdraw(amount, true);
+                    target->deposit(amount, true);
 
                     cout << ">>> Transfer of $" << amount << " to Account " << target_acc_num << " was successful.\n";
-                    cout << ">>> Your current balance is : $" << active_account.get_balance() << "\n";
+                    cout << ">>> Your current balance is : $" << active_account->get_balance() << "\n";
                 }
             }
             else
@@ -255,7 +255,7 @@ void BankManager::run_bank_session(SavingsAccount &active_account, User &active_
                 }
                 break;
             }
-            active_account.print_statement(date1, date2);
+            active_account->print_statement(date1, date2);
         }
         case 7:
         {
@@ -306,12 +306,12 @@ void BankManager::boot_up_scanner()
                 highest_acc_found = temp_num;
             }
 
-            SavingsAccount temp_acc(name, num, 5, temp_bal);
+            Account *temp_acc = new SavingsAccount(name, num, 5, temp_bal);
             User temp_user(name, temp_age, hash_str, salt_str);
 
             while (getline(history_ss, single, '|'))
             {
-                temp_acc.load_history(single);
+                temp_acc->load_history(single);
             }
 
             account_vault.insert({num, temp_acc});
@@ -329,16 +329,16 @@ void BankManager::shutdown_server()
     {
         for (auto it : account_vault)
         {
-            auto &temp = it.second;
+            Account *temp = it.second;
             string acc_num = it.first;
-            myfile << temp.get_acc_number() << ","
-                   << temp.get_name() << ","
+            myfile << temp->get_acc_number() << ","
+                   << temp->get_name() << ","
                    << user_vault.at(acc_num).get_age() << ","
                    << user_vault.at(acc_num).get_hash() << ","
                    << user_vault.at(acc_num).get_salt() << ","
-                   << temp.get_balance() << ",";
+                   << temp->get_balance() << ",";
 
-            for (auto &iter : temp.get_ledger())
+            for (auto &iter : temp->get_ledger())
             {
                 myfile << iter.second << "|";
             }
@@ -349,6 +349,11 @@ void BankManager::shutdown_server()
     {
         cout << "Error in opening database file\n";
     }
+    for (auto &it : account_vault)
+    {
+        delete it.second;
+    }
+    account_vault.clear();
     myfile.close();
     cout << "Closing the server.....\n";
 }
@@ -411,7 +416,7 @@ void BankManager::show_main_menu()
                     if (hash_pass == original_hash)
                     {
                         cout << ">>> Account found instantly in RAM!\n";
-                        SavingsAccount &session_account = account_vault.at(account_number);
+                        Account *session_account = account_vault.at(account_number); // CATCH AS POINTER
                         User &session_user = user_vault.at(account_number);
                         run_bank_session(session_account, session_user);
                         break;
@@ -448,19 +453,36 @@ void BankManager::show_main_menu()
             }
             string salt = BankCrypto::generate_salt();
             string hash_pass = BankCrypto::hash_password(pin, salt);
-            SavingsAccount temp_account(loaded_name, 5, 0);
+            // --- ACCOUNT TYPE SELECTION ---
+            int acc_type = 0;
+            while (acc_type != 1 && acc_type != 2)
+            {
+                acc_type = get_valid_int("Press 1 for a Savings Account. Press 2 for a Checking Account:\n");
+            }
+
+            Account *temp_account = nullptr;
+
+            if (acc_type == 1)
+            {
+                temp_account = new SavingsAccount(loaded_name, 5, 0);
+            }
+            else
+            {
+                temp_account = new CheckingAccount(loaded_name, 0);
+            }
+
             User temp_user(loaded_name, age, hash_pass, salt);
 
-            string new_id = temp_account.get_acc_number();
+            string new_id = temp_account->get_acc_number();
             account_vault.insert({new_id, temp_account});
             user_vault.insert({new_id, temp_user});
 
-            SavingsAccount &live_account = account_vault.at(new_id);
+            Account *live_account = account_vault.at(new_id);
             User &live_user = user_vault.at(new_id);
 
             if (loaded_balance > 0)
             {
-                live_account.deposit(loaded_balance);
+                live_account->deposit(loaded_balance);
             }
 
             run_bank_session(live_account, live_user);
