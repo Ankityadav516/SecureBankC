@@ -2,6 +2,9 @@
 #include <iostream>
 #include "BankManager.h"
 #include <ctime>
+#include <iomanip>
+#include "sqlite3.h"
+#include <cmath>
 using namespace std;
 
 int Account::next_acc_number = 100001;
@@ -26,17 +29,6 @@ int Account::get_balance()
     return this->balance;
 }
 
-std::map<int, std::string> Account::get_ledger()
-{
-    return this->ledger;
-}
-
-void Account::load_history(string record)
-{
-    int next_id = this->ledger.size() + 1;
-    this->ledger[next_id] = record;
-}
-
 string Account::get_name()
 {
     return this->acc_holder;
@@ -53,18 +45,8 @@ void Account::deposit(int amount, bool silent)
     {
         this->balance += amount;
 
-        time_t raw_time = time(0);
-        tm *local_time = localtime(&raw_time);
-        char buffer[80];
-        strftime(buffer, sizeof(buffer), "%Y-%m-%d %I:%M%p", local_time);
-        string timeOfDeposit = string(buffer);
-
-        string value = timeOfDeposit + "@+" + to_string(amount);
-
-        int key = this->ledger.size() + 1;
-        this->ledger[key] = value;
         if (!silent)
-            cout << "Amount deposited successfully. Your current balance is : " << this->balance << "\n";
+            cout << "Amount deposited successfully. Your current balance is : $" << this->balance << "\n";
     }
     else
     {
@@ -78,42 +60,60 @@ CheckingAccount::CheckingAccount(std::string name, int amount)
 CheckingAccount::CheckingAccount(std::string name, std::string existing_acc_num, int amount)
     : Account(name, existing_acc_num, amount) {}
 
-void Account::print_statement(string start_date, string end_date)
+void Account::print_statement(string start_date, string end_date, sqlite3 *db)
 {
-    for (auto it : this->ledger)
+    cout << "\n=================== TRANSACTION LEDGER ===================\n";
+    cout << " ACC NUM: " << this->acc_number << " | HOLDER: " << this->acc_holder << "\n";
+    cout << " RANGE  : " << start_date << " to " << end_date << "\n";
+    cout << "----------------------------------------------------------\n";
+    cout << " TIMESTAMP          | ACTION               | AMOUNT       \n";
+    cout << "----------------------------------------------------------\n";
+
+    // Query using SQL's substr() to isolate the YYYY-MM-DD part of timestamp
+    string statement_sql =
+        "SELECT Timestamp, Action, Amount FROM Transactions "
+        "WHERE Account_Number = '" +
+        this->acc_number + "' "
+                           "AND substr(Timestamp, 1, 10) >= '" +
+        start_date + "' "
+                     "AND substr(Timestamp, 1, 10) <= '" +
+        end_date + "' "
+                   "ORDER BY Transaction_ID ASC;";
+
+    sqlite3_stmt *stmt;
+
+    if (sqlite3_prepare_v2(db, statement_sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
     {
-        string stamp = it.second;
-        if (stamp.size() < 10)
-            continue;
-        string date = stamp.substr(0, 10);
-        string toPrint = stamp.substr(0, 18);
-        if (date >= start_date && date <= end_date)
+        int row_count = 0;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
         {
-            cout << "[" << toPrint << "] | ";
-            char sign = stamp[19];
-            if (sign == '+')
-                cout << "DEPOSIT | ";
-            else if (sign == '-')
-                cout << "WITHDRAWAL | ";
-            string amount;
-            int i = 20;
-            while (i < stamp.size())
-            {
-                amount.push_back(stamp[i]);
-                i++;
-            }
-            cout << "$" << amount << "\n";
+            string timestamp = (const char *)sqlite3_column_text(stmt, 0);
+            string action = (const char *)sqlite3_column_text(stmt, 1);
+            int amount = sqlite3_column_int(stmt, 2);
+
+            cout << " " << timestamp << " | "
+                 << left << setw(20) << action << " | "
+                 << "$" << amount << "\n";
+            row_count++;
         }
-        else if (date > end_date)
-            break;
+
+        if (row_count == 0)
+        {
+            cout << " [!] No transactions recorded within this time window.\n";
+        }
     }
-    cout << "-------------------------------------------------\n";
+    else
+    {
+        cerr << ">>> SQL ERROR: Failed to fetch transaction statement history.\n";
+    }
+
+    sqlite3_finalize(stmt);
+    cout << "==========================================================\n";
 }
 bool SavingsAccount::withdraw(int amount, bool silent)
 {
     if (amount > 0 && amount <= this->balance)
     {
-
         if (amount > 10000 && !silent)
         {
             cout << ">>> ERROR: Transaction denied. Maximum physical withdrawal is $10,000.\n";
@@ -121,18 +121,8 @@ bool SavingsAccount::withdraw(int amount, bool silent)
         }
         this->balance -= amount;
 
-        time_t raw_time = time(0);
-        tm *local_time = localtime(&raw_time);
-        char buffer[80];
-        strftime(buffer, sizeof(buffer), "%Y-%m-%d %I:%M%p", local_time);
-        string timeOfWithdraw = string(buffer);
-
-        string value = timeOfWithdraw + "@-" + to_string(amount);
-
-        int key = this->ledger.size() + 1;
-        this->ledger[key] = value;
         if (!silent)
-            cout << "Amount withdrawn successfully. Your current balance is : " << this->balance << "\n";
+            cout << "Amount withdrawn successfully. Your current balance is : $" << this->balance << "\n";
         return true;
     }
     else
@@ -144,6 +134,12 @@ bool SavingsAccount::withdraw(int amount, bool silent)
 
 bool CheckingAccount::withdraw(int amount, bool silent)
 {
+    if (amount <= 0)
+    {
+        if (!silent)
+            cout << ">>> ERROR: Withdrawal amount must be strictly greater than zero.\n";
+        return false;
+    }
     if (balance - amount < -500)
     {
         if (!silent)
@@ -152,24 +148,12 @@ bool CheckingAccount::withdraw(int amount, bool silent)
     }
     balance -= amount;
 
-    time_t raw_time = time(0);
-    tm *local_time = localtime(&raw_time);
-    char buffer[80];
-    strftime(buffer, sizeof(buffer), "%Y-%m-%d %I:%M%p", local_time);
-    string current_time = string(buffer);
-
-    string value = current_time + "@-" + to_string(amount);
-
-    ledger[ledger.size() + 1] = current_time + "@-" + std::to_string(amount);
-
     if (!silent)
         std::cout << "Withdrawn: $" << amount << " | New Balance: $" << balance << "\n";
 
     if (balance < 0)
     {
         balance -= 35;
-
-        ledger[ledger.size() + 1] = current_time + "@-35";
 
         if (!silent)
             std::cout << "WARNING: Account overdrawn! $35 penalty fee applied. New Balance: $" << balance << "\n";
@@ -194,12 +178,36 @@ SavingsAccount::SavingsAccount(string name, string existing_acc_num, double inte
     : Account(name, existing_acc_num, amount), interest_rate{interest_rate}
 {
 }
-
-int SavingsAccount::apply_interest()
+int SavingsAccount::apply_interest(int periods_passed)
 {
-    int current_balance = get_balance();
-    int interest = (current_balance * interest_rate) / 100;
-    deposit(interest);
-    cout << "Interest applied. Total interest earned: $" << interest << "\n";
-    return interest;
+    if (periods_passed <= 0)
+    {
+        cout << ">>> No interest accumulated yet. Please wait for the next compounding period.\n";
+        return 0;
+    }
+
+    int original_balance = get_balance();
+
+    // Scaled rate: 0.01% per minute (0.0001) for safe live testing
+    double rate = 0.0001;
+
+    // The Algebraic Engine: A = P(1 + r)^t
+    double compounded_balance = original_balance * pow(1.0 + rate, periods_passed);
+
+    // Convert the float back to an integer
+    int total_interest_earned = (int)compounded_balance - original_balance;
+
+    if (total_interest_earned > 0)
+    {
+        deposit(total_interest_earned, true);
+        cout << ">>> Compound Interest triggered for " << periods_passed << " periods.\n";
+        cout << ">>> Total interest earned: $" << total_interest_earned << "\n";
+        cout << ">>> New Balance: $" << get_balance() << "\n";
+    }
+    else
+    {
+        cout << ">>> " << periods_passed << " periods passed, but balance is too low to generate a full $1 yet.\n";
+    }
+
+    return total_interest_earned;
 }

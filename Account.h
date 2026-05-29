@@ -1,6 +1,6 @@
 #pragma once
 #include <string>
-#include <map>
+struct sqlite3;
 
 class Account
 {
@@ -9,7 +9,6 @@ protected:
     int balance;
     std::string acc_number;
     std::string acc_holder;
-    std::map<int, std::string> ledger;
 
 public:
     Account(std::string name, int amount = 0);
@@ -18,12 +17,10 @@ public:
     // Static function
     static void sync_generator(int highest_found);
 
-    std::map<int, std::string> get_ledger();
-    void load_history(std::string record);
     int get_balance();
     std::string get_name();
     std::string get_acc_number();
-    void print_statement(std::string start_date, std::string end_date);
+    void print_statement(std::string start_date, std::string end_date, sqlite3 *db);
     void deposit(int amount, bool silent = false);
     virtual bool withdraw(int amount, bool silent = false) = 0;
     void displayAccount();
@@ -50,5 +47,5 @@ public:
     SavingsAccount(std::string name, double interest_rate, int amount = 0);
     SavingsAccount(std::string name, std::string existing_acc_num, double interest_rate, int amount);
     bool withdraw(int amount, bool silent = false) override;
-    int apply_interest();
+    int apply_interest(int periods_passed);
 };
