@@ -44,10 +44,3 @@ This project uses a Makefile for automated compilation.
 3. Run the server:
    ./SecureBank.exe
 Author : [Ankit] - Software Engineering & Architecture - [(https://github.com/Ankityadav516)]
-
-### Step 3: Commit and Push
-Once you paste that in and add your name, save it, commit it, and push it up to GitHub. 
-
-When you look at your repository page online, GitHub will automatically render that Markdown into a beautifully formatted webpage. 
-
-<FollowUp label="Repository Launch" query="Take a look at it on GitHub once you push it. Does the formatting look clean, or do we need to tweak any of the Markdown syntax?"/>
