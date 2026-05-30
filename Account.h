@@ -21,6 +21,7 @@ public:
     std::string get_name();
     std::string get_acc_number();
     void print_statement(std::string start_date, std::string end_date, sqlite3 *db);
+    void export_statement(std::string start_date, std::string end_date, sqlite3 *db);
     void deposit(int amount, bool silent = false);
     virtual bool withdraw(int amount, bool silent = false) = 0;
     void displayAccount();

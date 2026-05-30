@@ -1,15 +1,13 @@
 #include "BankManager.h"
-#include <ctime>
-#include <cstdlib>
+#include "BankUI.h"
 
-int main()
-{
-    srand(time(0));
-    BankManager bank;
-    
-    bank.boot_up_scanner();
-    
-    bank.show_main_menu();
-    
+int main() {
+    BankManager backend;
+    backend.boot_up_scanner();
+
+    BankUI terminal(&backend);
+
+    terminal.show_main_menu();
+
     return 0;
 }

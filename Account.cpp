@@ -1,6 +1,7 @@
 #include "Account.h"
 #include <iostream>
 #include "BankManager.h"
+#include <fstream>
 #include <ctime>
 #include <iomanip>
 #include "sqlite3.h"
@@ -52,6 +53,60 @@ void Account::deposit(int amount, bool silent)
     {
         cout << "Invalid deposit amount.\n";
     }
+}
+
+void Account::export_statement(string start_date, string end_date, sqlite3 *db)
+{
+    string filename = "Statement_" + this->acc_number + ".csv";
+
+    // Open the file stream
+    ofstream my_file(filename);
+    if (!my_file.is_open())
+    {
+        cerr << ">>> ERROR: System could not generate the CSV file.\n";
+        return;
+    }
+
+    // Write the CSV Headers
+    my_file << "Timestamp,Action,Amount\n";
+
+    string statement_sql =
+        "SELECT Timestamp, Action, Amount FROM Transactions "
+        "WHERE Account_Number = '" +
+        this->acc_number + "' "
+                           "AND substr(Timestamp, 1, 10) >= '" +
+        start_date + "' "
+                     "AND substr(Timestamp, 1, 10) <= '" +
+        end_date + "' "
+                   "ORDER BY Transaction_ID ASC;";
+
+    sqlite3_stmt *stmt;
+
+    if (sqlite3_prepare_v2(db, statement_sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK)
+    {
+        int row_count = 0;
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            string timestamp = (const char *)sqlite3_column_text(stmt, 0);
+            string action = (const char *)sqlite3_column_text(stmt, 1);
+            int amount = sqlite3_column_int(stmt, 2);
+
+            my_file << timestamp << "," << action << "," << amount << "\n";
+            row_count++;
+        }
+
+        if (row_count > 0)
+        {
+            cout << ">>> SUCCESS: Ledger exported securely to " << filename << "\n";
+        }
+        else
+        {
+            cout << ">>> No transactions found to export.\n";
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    my_file.close(); 
 }
 
 CheckingAccount::CheckingAccount(std::string name, int amount)
